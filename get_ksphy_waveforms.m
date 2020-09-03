@@ -1,5 +1,5 @@
-function get_ksphy_waveforms(sess_name)%% loop over tetrodes and load up relevant file
-
+function get_ksphy_waveforms(sess_name)
+% function get_ksphy_waveforms(sess_name)
 % For each bundle
     % 1. use sp = loadKSdir to get the spike times and cluster ids of all mua and good clusters
         % convert sp.st into an index into the mda file (might be some
@@ -32,7 +32,7 @@ end
 if ~exist(brody_dir),
     error(sprintf('can''t find brody directory: %s',brody_dir));
 end
-
+%%
 ratname     = 'H191';
 phys_dir    = fullfile(brody_dir,'/RATTER/PhysData');
 raw_dir     = fullfile(phys_dir, 'Raw');
@@ -46,31 +46,25 @@ uv_per_bit  = 1;
 warning('uv per bit set arbitrarily')
 nchperb = 32;
 nbundles = 4;
-nbundles = 1; warning('you''ve got nbundles==1')
 wave_x      = -6:25;
 event_clus  = [];
 event_ind   = [];
 event_waves_uv = [];
 nwaves   = 2000;
-
-
+ch2tt = @(ch, bb) ceil(ch / 4) + (bb-1)*nchperb/4;
+% Loop over bundles to get cluster information and figure out which
+% tetrodes we need to load to get cluster waveforms
+clear sp S
+%S(nbundles) = struct();
 for bb = 1:nbundles;
     % load up spike times and cluster ids from phy
     bundle_dir      = bundle_dirfun(bb);
     clus_info_path  = fullfile(bundle_dir,'cluster_info.tsv');
-    sp              = loadKSdir(bundle_dir);
-    is_mua          = sp.cgs == 1;
-    is_single       = sp.cgs == 2;
-    fs              = sp.sample_rate;
-    spike_times     = sp.st; % spike time in seconds 
-    phy_clus_id     = sp.clu; % cluster ids as shown in phy
-    sp.nspk         = nan(size(sp.cgs));
-    % create a filter for the waveforms 
-    [n,f0,a0,w] = firpmord([0 1000 6000 6500]/(sp.sample_rate/2), [0 1 0.1], [0.01 0.06 0.01]);
-    spk_filt    = firpm(n,f0,a0,w,{20});
-
-    % Find out which tetrode each cluster is on within the bundle using the
-    % cluster info file
+    sp          = loadKSdir(bundle_dir);
+    sp.mua      = sp.cgs == 1;
+    sp.single   = sp.cgs == 2;
+    sp.nspk     = nan(size(sp.cgs));
+    % Find which tetrode each cluster is on using cluster info file
     fid = fopen(clus_info_path);
     C = textscan(fid, '%s%s%s%s%s%s%s%s%s%s%s%s');
     assert(strcmp(C{1}(1), 'id')); % these ids match the phy gui
@@ -78,17 +72,24 @@ for bb = 1:nbundles;
     assert(strcmp(C{6}(1), 'ch')); % channel w/ strongest template
     clu_info_ch = cellfun(@str2num, C{6}(2:end));
     ncids = length(sp.cids);
-    ch1 = nan(size(sp.cids)); % 1 indexed channel id (note: it's 0 indexed in phy)
-    tt1 = nan(size(sp.cids)); % 1 indexed tetrode id
+    sp.ch1 = nan(size(sp.cids)); % 1 indexed channel id (note: it's 0 indexed in phy)
+    sp.tt1 = nan(size(sp.cids)); % 1 indexed tetrode id
     
+    % loop over good/mua clusters
     for cc = 1:ncids
         clu_ix      = sp.cids(cc); % get phy cluster id
-        info_ix     = find(clu_info_id == clu_ix); % find index in info file
-        ch1(cc)     = clu_info_ch(info_ix) + 1; % best channel for cluster
-        tt1(cc)     = ceil(ch1(cc) / 4) + (bb-1)*nchperb/4; % tetrode with cluster
+        info_ix     = clu_info_id == clu_ix; % find index for this cluster in info file
+        sp.ch1(cc) = clu_info_ch(info_ix) + 1; % best channel for cluster (indexed from 1)
+        sp.tt1(cc) = ch2tt(sp.ch1(cc),bb); % convert best channel num to best tetrode num
     end
-    
-    this_event_waves = nan(nwaves, ncids, length(wave_x), 4);
+    S(bb) = sp;
+end
+%%
+    % create a filter for the waveforms 
+    [n,f0,a0,w] = firpmord([0 1000 6000 6500]/(sp.sample_rate/2), [0 1 0.1], [0.01 0.06 0.01]);
+    spk_filt    = firpm(n,f0,a0,w,{20});
+
+    this_event_waves = nan(ncids, nwaves, length(wave_x), 4);
 
     %% Load each tetrode and compute waveforms 
     active_tts = unique(tt1);
@@ -118,22 +119,21 @@ for bb = 1:nbundles;
             % wave_inds   = spk_ix_keep(:) + repmat(wave_x,nwaves,1);
             for ss = 1:length(ix)
                 tmpWf = dat_filt(:,spk_ix_keep(ss)+wave_x);
-                this_event_waves(ss,cx,:,:) = tmpWf';
+                this_event_waves(cx,ss,:,:) = tmpWf';
             end
             %waveFormsMean(curUnitInd,:,:) = squeeze(nanmean(waveForms(curUnitInd,:,:,:),2));
             %disp(['Completed ' int2str(curUnitInd) ' units of ' int2str(numUnits) '.'])
         end
     end
-    sp.waves    = this_event_waves;
-    sp.wv_mn    = squeeze(nanmean(this_event_waves));
-    sp.wv_std   = squeeze(nanstd(this_event_waves));
-    sp.wave_x   = wave_x;
-    sp.mua      = is_mua;
-    sp.single   = is_single;
+    wf.waves    = this_event_waves;
+    sp.wv_mn    = squeeze(nanmean(this_event_waves,2));
+    sp.wv_std   = squeeze(nanstd(this_event_waves,2));
+    sp.mua      = [sp.mua is_mua];
+    sp.single   = [sp.single is_single];
     sp.tt1      = tt;
     sp.ch1      = ch1;
+    sp.wave_x   = wave_x;
     sp.wave_t_s = wave_x/fs;
-
     sp.nwaves   = nwaves;
 end
 
