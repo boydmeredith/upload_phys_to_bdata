@@ -85,56 +85,58 @@ for bb = 1:nbundles;
     S(bb) = sp;
 end
 %%
-    % create a filter for the waveforms 
-    [n,f0,a0,w] = firpmord([0 1000 6000 6500]/(sp.sample_rate/2), [0 1 0.1], [0.01 0.06 0.01]);
-    spk_filt    = firpm(n,f0,a0,w,{20});
+clear sp
 
-    this_event_waves = nan(ncids, nwaves, length(wave_x), 4);
+% create a filter for the waveforms
+assert(sum(diff([S.sample_rate]))==0) % check that all the files have same sampling rate
+fs      = S(1).sample_rate;
+[n,f0,a0,w] = firpmord([0 1000 6000 6500]/(fs/2), [0 1 0.1], [0.01 0.06 0.01]);
+spk_filt    = firpm(n,f0,a0,w,{20});
 
-    %% Load each tetrode and compute waveforms 
-    active_tts = unique(tt1);
-    for tt = 1:length(active_tts)
-        this_tt     = active_tts(tt);
-        active_clu  = sp.cids(tt1 == this_tt);
-        this_mda    = mda_filefun(this_tt);
-        fprintf('loading mda file for tetrode %i...',this_tt);
-        tic; 
-        dat    = readmda(this_mda); 
-        toc; 
-        fprintf('filtering');
-        tic;
-        dat_filt    = filtfilt(spk_filt,1,uv_per_bit*dat')';
-        toc
-        % loop over clusters on this tetrode and grab waveforms
-        for cc = 1:length(active_clu)
-            spk_ix_keep = nan(1,nwaves);
-            this_clu    = active_clu(cc);
-            cx = sp.cids == this_clu;
-            this_spk_ix = round(sp.st(sp.clu==this_clu)*sp.sample_rate);
-            this_nspk   = length(this_spk_ix);
-            sp.nspk(cx) = this_nspk;
-            rp_spk_ix   = this_spk_ix(randperm(this_nspk));
-            ix          = 1:min([nwaves this_nspk]);
-            spk_ix_keep(ix) = sort(rp_spk_ix(ix));
-            % wave_inds   = spk_ix_keep(:) + repmat(wave_x,nwaves,1);
-            for ss = 1:length(ix)
-                tmpWf = dat_filt(:,spk_ix_keep(ss)+wave_x);
-                this_event_waves(cx,ss,:,:) = tmpWf';
-            end
-            %waveFormsMean(curUnitInd,:,:) = squeeze(nanmean(waveForms(curUnitInd,:,:,:),2));
-            %disp(['Completed ' int2str(curUnitInd) ' units of ' int2str(numUnits) '.'])
+cids    = [S.cids];
+tt1     = [S.tt1];
+ch1     = [S.ch1];
+st      = vertcat(S.st);
+clu     = vertcat(S.clu);
+ncids   = length(cids);
+nspk    = nan(size(cids));
+event_waves = nan(ncids, nwaves, length(wave_x), 4);
+
+% Load each tetrode and compute waveforms
+active_tts = unique(tt1);
+for tt = 1:length(active_tts)
+    this_tt     = active_tts(tt);
+    active_clu  = cids(tt1 == this_tt)
+    this_mda    = mda_filefun(this_tt);
+    fprintf('loading mda file for tetrode %i...',this_tt);
+    tic;
+    dat    = readmda(this_mda);
+    toc;
+    fprintf('filtering');
+    tic;
+    dat_filt    = filtfilt(spk_filt,1,uv_per_bit*dat')';
+    toc
+    % loop over clusters on this tetrode and grab waveforms
+    for cc = 1:length(active_clu)
+        spk_ix_keep = nan(1,nwaves);
+        this_clu    = active_clu(cc);
+        cx          = cids == this_clu;
+        this_spk_ix = round(st(clu==this_clu)*fs);
+        this_nspk   = length(this_spk_ix);
+        nspk(cx)    = this_nspk;
+        rp_spk_ix   = this_spk_ix(randperm(this_nspk));
+        keep        = 1:min([nwaves this_nspk]);
+        spk_ix_keep(keep) = sort(rp_spk_ix(keep));
+        % wave_inds   = spk_ix_keep(:) + repmat(wave_x,nwaves,1);
+        for ss = 1:length(keep)
+            tmpWf = dat_filt(:,spk_ix_keep(ss)+wave_x);
+            event_waves(cx,ss,:,:) = tmpWf';
         end
+        %waveFormsMean(curUnitInd,:,:) = squeeze(nanmean(waveForms(curUnitInd,:,:,:),2));
+        %disp(['Completed ' int2str(curUnitInd) ' units of ' int2str(numUnits) '.'])
     end
-    wf.waves    = this_event_waves;
-    sp.wv_mn    = squeeze(nanmean(this_event_waves,2));
-    sp.wv_std   = squeeze(nanstd(this_event_waves,2));
-    sp.mua      = [sp.mua is_mua];
-    sp.single   = [sp.single is_single];
-    sp.tt1      = tt;
-    sp.ch1      = ch1;
-    sp.wave_x   = wave_x;
-    sp.wave_t_s = wave_x/fs;
-    sp.nwaves   = nwaves;
 end
 
-
+wv_mn    = squeeze(nanmean(event_waves,2));
+wv_std   = squeeze(nanstd(event_waves,2));
+wave_t_s = wave_x/fs;
