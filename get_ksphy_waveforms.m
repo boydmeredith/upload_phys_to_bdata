@@ -138,5 +138,5 @@ for tt = 1:length(active_tts)
 end
 
 wv_mn    = squeeze(nanmean(event_waves,2));
-wv_std   = squeeze(nanstd(event_waves,2));
+wv_std   = squeeze(nanstd(event_waves,[],2));
 wave_t_s = wave_x/fs;
