@@ -1,4 +1,4 @@
-function get_ksphy_waveforms(sess_name)
+function waves = get_ksphy_waveforms(sess_name)
 % function get_ksphy_waveforms(sess_name)
 % For each bundle
     % 1. use sp = loadKSdir to get the spike times and cluster ids of all mua and good clusters
@@ -50,12 +50,13 @@ wave_x      = -6:25;
 event_clus  = [];
 event_ind   = [];
 event_waves_uv = [];
-nwaves   = 2000;
-ch2tt = @(ch, bb) ceil(ch / 4) + (bb-1)*nchperb/4;
+nwaves  = 2000;
+ch2tt   = @(ch, bb) ceil(ch / 4) + (bb-1)*nchperb/4;
 % Loop over bundles to get cluster information and figure out which
 % tetrodes we need to load to get cluster waveforms
 clear sp S
 %S(nbundles) = struct();
+clu_inc = 0;
 for bb = 1:nbundles;
     % load up spike times and cluster ids from phy
     bundle_dir      = bundle_dirfun(bb);
@@ -63,7 +64,7 @@ for bb = 1:nbundles;
     sp          = loadKSdir(bundle_dir);
     sp.mua      = sp.cgs == 1;
     sp.single   = sp.cgs == 2;
-    sp.nspk     = nan(size(sp.cgs));
+
     % Find which tetrode each cluster is on using cluster info file
     fid = fopen(clus_info_path);
     C = textscan(fid, '%s%s%s%s%s%s%s%s%s%s%s%s');
@@ -72,15 +73,21 @@ for bb = 1:nbundles;
     assert(strcmp(C{6}(1), 'ch')); % channel w/ strongest template
     clu_info_ch = cellfun(@str2num, C{6}(2:end));
     ncids = length(sp.cids);
-    sp.ch1 = nan(size(sp.cids)); % 1 indexed channel id (note: it's 0 indexed in phy)
-    sp.tt1 = nan(size(sp.cids)); % 1 indexed tetrode id
+    sp.ch1  = nan(size(sp.cids)); % 1 indexed channel id (note: it's 0 indexed in phy)
+    sp.tt1  = nan(size(sp.cids)); % 1 indexed tetrode id
+    sp.cid1 = nan(size(sp.cgs)); % 1 indexed cluster id. numbers span bundles so we don't have non-unique cluster ids
+    sp.nspk = nan(size(sp.cgs)); % how many spikes are in each cluster
+    
     
     % loop over good/mua clusters
     for cc = 1:ncids
+        clu_inc     = clu_inc + 1;
         clu_ix      = sp.cids(cc); % get phy cluster id
         info_ix     = clu_info_id == clu_ix; % find index for this cluster in info file
-        sp.ch1(cc) = clu_info_ch(info_ix) + 1; % best channel for cluster (indexed from 1)
-        sp.tt1(cc) = ch2tt(sp.ch1(cc),bb); % convert best channel num to best tetrode num
+        sp.ch1(cc)  = clu_info_ch(info_ix) + 1; % best channel for cluster (indexed from 1)
+        sp.tt1(cc)  = ch2tt(sp.ch1(cc),bb); % convert best channel num to best tetrode num
+        sp.cid1(cc) = clu_inc;
+        sp.nspk(cc) = sum(sp.clu == clu_ix);     
     end
     S(bb) = sp;
 end
@@ -89,7 +96,7 @@ clear sp
 
 % create a filter for the waveforms
 assert(sum(diff([S.sample_rate]))==0) % check that all the files have same sampling rate
-fs      = S(1).sample_rate;
+fs          = S(1).sample_rate;
 [n,f0,a0,w] = firpmord([0 1000 6000 6500]/(fs/2), [0 1 0.1], [0.01 0.06 0.01]);
 spk_filt    = firpm(n,f0,a0,w,{20});
 
@@ -99,11 +106,14 @@ ch1     = [S.ch1];
 st      = vertcat(S.st);
 clu     = vertcat(S.clu);
 ncids   = length(cids);
-nspk    = nan(size(cids));
+
+    
+    
 event_waves = nan(ncids, nwaves, length(wave_x), 4);
 
 % Load each tetrode and compute waveforms
 active_tts = unique(tt1);
+clu_inc = 0; 
 for tt = 1:length(active_tts)
     this_tt     = active_tts(tt);
     active_clu  = cids(tt1 == this_tt)
@@ -118,6 +128,7 @@ for tt = 1:length(active_tts)
     toc
     % loop over clusters on this tetrode and grab waveforms
     for cc = 1:length(active_clu)
+        clu_inc     = clu_inc + 1;
         spk_ix_keep = nan(1,nwaves);
         this_clu    = active_clu(cc);
         cx          = cids == this_clu;
@@ -137,6 +148,12 @@ for tt = 1:length(active_tts)
     end
 end
 
-wv_mn    = squeeze(nanmean(event_waves,2));
-wv_std   = squeeze(nanstd(event_waves,[],2));
-wave_t_s = wave_x/fs;
+waves.wv_mn    = squeeze(nanmean(event_waves,2));
+waves.wv_std   = squeeze(nanstd(event_waves,[],2));
+waves.wave_t_s = wave_x/fs;
+waves.fs = fs;
+waves.wave_x = wave_x;
+
+waves.event_clus = [];
+event_ind
+event_ts
