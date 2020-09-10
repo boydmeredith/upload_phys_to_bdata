@@ -41,7 +41,7 @@ sess_dir    = fullfile(sorted_dir, 'Ahmed/SpikeGadgets/', ratname, sess_name);
 mda_dir     = fullfile(raw_dir, 'Ahmed/SpikeGadgets/', [sess_name '.mda']);
 bundle_dirfun   = @(bb) fullfile(sess_dir,sprintf('%s_bundle%i',sess_name,bb));
 mda_filefun     = @(tt) fullfile(mda_dir,sprintf('%s.nt%i.mda',sess_name,tt) );
-
+save_name   = fullfile(sess_dir,'waves.mat');
 uv_per_bit  = 1;
 warning('uv per bit set arbitrarily')
 nchperb     = 32;
