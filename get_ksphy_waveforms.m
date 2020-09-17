@@ -33,6 +33,7 @@ if ~exist(brody_dir),
     error(sprintf('can''t find brody directory: %s',brody_dir));
 end
 
+expmtr      = 'Tyler';
 ratname     = 'H191';
 phys_dir    = fullfile(brody_dir,'/RATTER/PhysData');
 raw_dir     = fullfile(phys_dir, 'Raw');
@@ -41,7 +42,6 @@ sess_dir    = fullfile(sorted_dir, 'Ahmed/SpikeGadgets/', ratname, sess_name);
 mda_dir     = fullfile(raw_dir, 'Ahmed/SpikeGadgets/', [sess_name '.mda']);
 bndl_dirfun = @(bb) fullfile(sess_dir,sprintf('%s_bundle%i',sess_name,bb));
 mda_filefun = @(tt) fullfile(mda_dir,sprintf('%s.nt%i.mda',sess_name,tt) );
-clus_notes_path = fullfile(sess_dir,'cluster_notes.txt')
 save_name   = fullfile(sess_dir,'waves.mat');
 uv_per_bit  = 1;
 warning('uv per bit conversion ratio unknown')
@@ -53,12 +53,15 @@ ch2tt       = @(ch, bb) ceil(ch / 4) + (bb-1)*nchperb/4;
 % Loop over bundles to get cluster information and figure out which
 % tetrodes we need to load to get cluster waveforms
 %S(nbundles) = struct();
-sess_date   = sess_name((0:7)+regexp(sess_name,'\d\d\d\d\d\d\d'))
-clus_notes_hdr = sprintf('%s\n%s\n%s',datestr(sess_date),...
-        ratname, experimenter)
-    "\nTT%i - "
-"%i single \n "
-"%i multi "
+
+sess_match = find_wireless_sess(sess_name);
+
+notes_path  = fullfile(sess_dir,'cluster_notes.txt')
+notes_fid   = fopen(notes_path,'w+');
+sess_date   = datestr(['20' sess_match.date_str([1 2]) '-' sess_match.date_str([3 4]) ...
+    '-' sess_match.date_str([5 6])]);
+fprintf(notes_fid,'%s\n%s\n%s\n\n',sess_date, ratname, expmtr);
+
 
 for bb = 1:nbundles;
     % load up spike times and cluster ids from phy
@@ -113,14 +116,17 @@ for bb = 1:nbundles
     fs = S(bb).sample_rate;
     % loop over trodes in this bundle with clusters
     for tt = 1:length(active_tts)
+        
         % Figure out which clusters are on this tetrode
-        tt_ix       = tt_ix + 1;
+        tt_ix        = tt_ix + 1;
         this_tt     = active_tts(tt);
         this_mda    = mda_filefun(this_tt);
         this_tt_ind = S(bb).tt1 == this_tt;
         active_clu  = S(bb).cids(this_tt_ind);
         is_mua      = S(bb).mua(this_tt_ind);
         is_single   = S(bb).single(this_tt_ind);
+        
+        fprintf(notes_fid, "TT%i - \n",this_tt);
         
         % Load this tetrode and filter it
         fprintf('loading mda file for tetrode %i...',this_tt);
@@ -143,7 +149,14 @@ for bb = 1:nbundles
         spk_ix_keep = nan(n_clu_on_tt,nwaves); % indices used in mean waveform
 
         end_ind     = 0; % keep track of last entry into tetrode
-        for cc = 1:n_clu_on_tt           
+        for cc = 1:n_clu_on_tt 
+            if is_mua(cc)
+                clus_label = sprintf('%i multi\n',cc);
+            elseif is_single(cc)
+                clus_label = sprintf('%i single\n',cc);
+            end
+            fprintf(notes_fid, clus_label);
+            
             this_cid    = active_clu(cc);
             this_st     = S(bb).st(S(bb).clu == this_cid);
             this_spk_ix = round(this_st * fs);
@@ -167,8 +180,8 @@ for bb = 1:nbundles
         end
 
         % put this trodenum and mda filename into wave struct
-        waveS(tt_ix).mua        = mua;
-        waveS(tt_ix).single     = this_single;
+        waveS(tt_ix).mua        = is_mua;
+        waveS(tt_ix).single     = is_single;
         waveS(tt_ix).mda_fn     = this_mda;
         waveS(tt_ix).trodenum   = this_tt;
         waveS(tt_ix).event_ind  = ev_ind;
@@ -182,9 +195,12 @@ for bb = 1:nbundles
         waveS(tt_ix).wv_mn      = -squeeze(nanmean(event_waves,2));
         waveS(tt_ix).wv_std     = -squeeze(nanstd(event_waves,[],2));
         waveS(tt_ix).wave_ind   = spk_ix_keep;
+        waveS(tt_ix).sess_match = sess_match;
+        waveS(tt_ix).event_ts_fsm = sess_match.spk2fsm_fn(ev_st);
     end
 end
 
+fclose(notes_fid);
 
 save(save_name,'waveS');
 
