@@ -1,4 +1,4 @@
-function waveS = get_ksphy_waveforms(sess_name)
+function res = get_ksphy_results(sess_name)
 % function get_ksphy_waveforms(sess_name)
 % For each bundle
     % 1. use sp = loadKSdir to get the spike times and cluster ids of all mua and good clusters
@@ -108,7 +108,7 @@ spk_filt    = firpm(n,f0,a0,w,{20});
 % Compute each cluster's mean waveform by loading relevant tetrode,
 % filtering the signal and pulling relevant indices
 nactivetts  = length(unique([S.tt1]));
-waveS(nactivetts) = struct();
+res(nactivetts) = struct();
 
 tt_ix = 0;
 for bb = 1:nbundles
@@ -180,23 +180,23 @@ for bb = 1:nbundles
         end
 
         % put this trodenum and mda filename into wave struct
-        waveS(tt_ix).mua        = is_mua;
-        waveS(tt_ix).single     = is_single;
-        waveS(tt_ix).mda_fn     = this_mda;
-        waveS(tt_ix).trodenum   = this_tt;
-        waveS(tt_ix).event_ind  = ev_ind;
-        waveS(tt_ix).event_ts   = ev_st;
-        waveS(tt_ix).event_clus = tt_clu;
-        waveS(tt_ix).phy_cids   = active_clu;
-        waveS(tt_ix).fs         = fs;
-        waveS(tt_ix).event_wave = event_waves;
-        waveS(tt_ix).wave_x     = wave_x;
-        waveS(tt_ix).wave_t_s   = wave_x/fs;
-        waveS(tt_ix).wv_mn      = -squeeze(nanmean(event_waves,2));
-        waveS(tt_ix).wv_std     = -squeeze(nanstd(event_waves,[],2));
-        waveS(tt_ix).wave_ind   = spk_ix_keep;
-        waveS(tt_ix).sess_match = sess_match;
-        waveS(tt_ix).event_ts_fsm = sess_match.spk2fsm_fn(ev_st);
+        res(tt_ix).mua          = is_mua;
+        res(tt_ix).single       = is_single;
+        res(tt_ix).mda_fn       = this_mda;
+        res(tt_ix).trodenum     = this_tt;
+        res(tt_ix).event_ind    = ev_ind;
+        res(tt_ix).event_ts     = ev_st;
+        res(tt_ix).event_clus   = tt_clu;
+        res(tt_ix).phy_cids     = active_clu;
+        res(tt_ix).fs           = fs;
+        res(tt_ix).event_wave   = event_waves;
+        res(tt_ix).wave_x       = wave_x;
+        res(tt_ix).wave_t_s     = wave_x/fs;
+        res(tt_ix).wv_mn        = -squeeze(nanmean(event_waves,2));
+        res(tt_ix).wv_std       = -squeeze(nanstd(event_waves,[],2));
+        res(tt_ix).wave_ind     = spk_ix_keep;
+        res(tt_ix).sess_match   = sess_match;
+        res(tt_ix).event_ts_fsm = sess_match.spk2fsm_fn(ev_st);
     end
 end
 
