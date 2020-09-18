@@ -32,7 +32,7 @@ end
 if ~exist(brody_dir),
     error(sprintf('can''t find brody directory: %s',brody_dir));
 end
-overwrite   = 0;
+overwrite   = 1;
 expmtr      = 'Tyler';
 ratname     = 'H191';
 phys_dir    = fullfile(brody_dir,'/RATTER/PhysData');
@@ -153,7 +153,7 @@ for bb = 1:nbundles
         
         nchpertt = 4;
         n_clu_on_tt = length(active_clu);
-        event_waves = nan(n_clu_on_tt, length(wave_x), nchpertt, nwaves);
+        event_waves = nan(n_clu_on_tt, nchpertt, length(wave_x), nwaves);
         spk_ix_keep = nan(n_clu_on_tt,nwaves); % indices used in mean waveform
 
         end_ind     = 0; % keep track of last entry into tetrode
@@ -181,16 +181,16 @@ for bb = 1:nbundles
 
             for ss = 1:length(keep)
                 tmpWf = dat_filt(:,spk_ix_keep(cc,ss)+wave_x);
-                event_waves(cc,:,:,ss) = tmpWf';
+                event_waves(cc,:,:,ss) = tmpWf;
             end
             
             
         end
 
-        % put this trodenum and mda filename into wave struct
+        res(tt_ix).ratname      = ratname;
         res(tt_ix).mua          = is_mua;
         res(tt_ix).single       = is_single;
-        res(tt_ix).mda_fn       = this_mda;
+        res(tt_ix).recpath      = this_mda;
         res(tt_ix).trodenum     = this_tt;
         res(tt_ix).event_ind    = ev_ind;
         res(tt_ix).event_ts     = ev_st;
@@ -200,11 +200,16 @@ for bb = 1:nbundles
         res(tt_ix).event_wave   = -event_waves;
         res(tt_ix).wave_x       = wave_x;
         res(tt_ix).wave_t_s     = wave_x/fs;
-        res(tt_ix).wv_mn        = -nanmean(event_waves,4);
-        res(tt_ix).wv_std       = -nanstd(event_waves,[],4);
-        res(tt_ix).wave_ind     = spk_ix_keep;
+        res(tt_ix).waves_mn     = -nanmean(event_waves,4);
+        res(tt_ix).waves_std    = -nanstd(event_waves,[],4);
+        res(tt_ix).waves_clus   = 1:n_clu_on_tt;
+        res(tt_ix).waves_ind    = spk_ix_keep;
         res(tt_ix).sess_match   = sess_match;
+        res(tt_ix).sync_fit_m   = sess_match.spk2fsm_rt(1);
+        res(tt_ix).sync_fit_b   = sess_match.spk2fsm_rt(2);
         res(tt_ix).event_ts_fsm = sess_match.spk2fsm_fn(ev_st);
+        res(tt_ix).clusnotepath = notes_path;
+
     end
 end
 
