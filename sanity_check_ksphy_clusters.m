@@ -31,9 +31,9 @@ for ttind = 1:length(trodenums)
         lh = cellfun(@(x) ~isempty(x.left_reward), {peh.states});
         
         this_waves = squeeze(waveS(ttind).event_wave(cc,:,:,:));
-        mean_waves = -squeeze(nanmean(this_waves));
+        mean_waves = nanmean(waveS(ttind).wa,4);
         
-        pks        = max(this_waves,[],2);
+        pks        = max(this_waves,[],3);
         
         lh_cpk_ts = cpk_ts(rh);
         rh_cpk_ts = cpk_ts(lh);
