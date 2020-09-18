@@ -32,7 +32,7 @@ end
 if ~exist(brody_dir),
     error(sprintf('can''t find brody directory: %s',brody_dir));
 end
-
+overwrite   = 0;
 expmtr      = 'Tyler';
 ratname     = 'H191';
 phys_dir    = fullfile(brody_dir,'/RATTER/PhysData');
@@ -43,6 +43,13 @@ mda_dir     = fullfile(raw_dir, 'Ahmed/SpikeGadgets/', [sess_name '.mda']);
 bndl_dirfun = @(bb) fullfile(sess_dir,sprintf('%s_bundle%i',sess_name,bb));
 mda_filefun = @(tt) fullfile(mda_dir,sprintf('%s.nt%i.mda',sess_name,tt) );
 save_name   = fullfile(sess_dir,'waves.mat');
+
+if exist(save_name,'file') && ~overwrite
+    load(save_name,'res');
+    return
+end
+
+
 uv_per_bit  = 1;
 warning('uv per bit conversion ratio unknown')
 nchperb     = 32;
@@ -143,9 +150,10 @@ for bb = 1:nbundles
         ev_st    = nan(tt_nspk,1);
         ev_ind   = nan(tt_nspk,1);
         tt_clu   = nan(tt_nspk,1);
-
+        
+        nchpertt = 4;
         n_clu_on_tt = length(active_clu);
-        event_waves = nan(n_clu_on_tt, nwaves, length(wave_x), 4);
+        event_waves = nan(n_clu_on_tt, length(wave_x), nchpertt, nwaves);
         spk_ix_keep = nan(n_clu_on_tt,nwaves); % indices used in mean waveform
 
         end_ind     = 0; % keep track of last entry into tetrode
@@ -173,7 +181,7 @@ for bb = 1:nbundles
 
             for ss = 1:length(keep)
                 tmpWf = dat_filt(:,spk_ix_keep(cc,ss)+wave_x);
-                event_waves(cc,ss,:,:) = tmpWf';
+                event_waves(cc,:,:,ss) = tmpWf';
             end
             
             
@@ -189,11 +197,11 @@ for bb = 1:nbundles
         res(tt_ix).event_clus   = tt_clu;
         res(tt_ix).phy_cids     = active_clu;
         res(tt_ix).fs           = fs;
-        res(tt_ix).event_wave   = event_waves;
+        res(tt_ix).event_wave   = -event_waves;
         res(tt_ix).wave_x       = wave_x;
         res(tt_ix).wave_t_s     = wave_x/fs;
-        res(tt_ix).wv_mn        = -squeeze(nanmean(event_waves,2));
-        res(tt_ix).wv_std       = -squeeze(nanstd(event_waves,[],2));
+        res(tt_ix).wv_mn        = -nanmean(event_waves,4);
+        res(tt_ix).wv_std       = -nanstd(event_waves,[],4);
         res(tt_ix).wave_ind     = spk_ix_keep;
         res(tt_ix).sess_match   = sess_match;
         res(tt_ix).event_ts_fsm = sess_match.spk2fsm_fn(ev_st);
