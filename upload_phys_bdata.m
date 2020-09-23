@@ -29,15 +29,26 @@ function err = upload_phys_bdata(spkS)
 err = 0;
 
 % make sure this sessid corresponds to the expected rat
-assert(length(unique([spkS.sessid]))==1);
-sessid  = spkS(1).sessid;
+sms     = [spkS.sess_match];
+assert(length(unique([sms.sessid]))==1);
+sessid  = spkS(1).sess_match.sessid;
 ratname = bdata('select ratname from sessions where sessid="{S}"',sessid);
 ratname = ratname{1};
 assert(strcmp(ratname,spkS(1).ratname));
 % make sure this eibid is in the eibds table
-if ~bdata('select count(*) from ratinfo.eibs where eibid={S}',spkS(1).eibid);
-    error('can''t find this eib... create an eibs entry using insert_rat_to_eibs');
-end
+if isfield(spkS(1),'eibid')
+    if ~bdata('select count(*) from ratinfo.eibs where eibid={S}',spkS(1).eibid);
+        error('can''t find this eib... create an eibs entry using insert_rat_to_eibs');
+    end
+else
+    eibid = bdata(['select eibid from ratinfo.eibs where ratname="' ratname '"']);
+    if length(eibid) > 1
+       error('multiple eibid matches');
+    end
+    for ss = 1:length(spkS)
+        spkS(ss).eibid = eibid;
+    end
+end        
 
 % Upload cutting notes and fsm syncing parameters to the phys_sess table
 in_phys_sess = bdata('select count(sessid) from phys_sess where sessid="{Si}"',sessid);
@@ -56,18 +67,32 @@ for ss = 1:length(spkS)
     % check cells table for this tetrode
     is_in_cells = bdata('select count(*) from cells where sessid="{Si}" and sc_num="{Si}"', sessid, sc_num);
     if is_in_cells > 0
-        warning('already uploaded cells for this session and channel')
-        keyboard
+        warning(sprintf('already uploaded cells for tetrode %i', spkS(ss).trodenum))
+        in = input(sprintf('Do you want to continue uploading tetrode %i?(y/n)',spkS(ss).trodenum),'s')
+        if lower(in)=='y'
+            sprintf('Are you sure it already has %i cells?(y/n)',is_in_cells)
+            keyboard
+        elseif lower(in) == 'n'
+            continue
+        else
+            keyboard
+        end
     end
     upload_phys_bdata_(spkS(ss))
 end
+% use the cluster notes to update the single boolean in the cells table
+sync_cutting_notes(sessid)
+% add some statistics about the spikes to the cells table
+post_process_spikes(sessid)
 end 
+
+
 
 function upload_phys_bdata_(spkS)
 NCHPERTT    = 4;
 eibid       = spkS.eibid;
 ratname     = spkS.ratname;
-sessid      = spkS.sessid;
+sessid      = spkS.sess_match.sessid;
 trodenum    = spkS.trodenum;
 recpath     = spkS.recpath;
 fs          = spkS.fs;
@@ -100,16 +125,27 @@ else
 end
 
 % update channels table for this tetrode
-in_channels = bdata(['select count(sessid) from bdata.channels where '...
-    'sessid="{Si}" and file_name="{S}"'],sessid,rec_fname);
+channelid = bdata(['select channelid from bdata.channels where '...
+    'sessid="{Si}" and ad_channels="{S}"'],...
+    sessid, num2str(chans));
+in_channels = ~isempty(channelid);
+% NOTE: at the moment the file name can only be 30 characters long, which
+% sucks because we lose the important part of a long filename like we have
+% for the spike gadgets data
 if ~in_channels
     sqlstr=['insert into bdata.channels (sessid, ad_channels, header, file_name, path_name) ' ...
         ' values ("{Si}","{S}","{S}","{S}","{S}")'];
-    bdata(sqlstr, sessid, chans, hd, rec_fname, fldr);
+    bdata(sqlstr, sessid, num2str(chans), hd, rec_fname, fldr);
     channelid=bdata('select last_insert_id()');
 else
     warning('already uploaded channel for this file name')
-    keyboard
+    in = input('Do you want to continue uploading this channel?(y/n)','s')
+    if in=='y'
+        keyboard
+    else
+        keyboard
+        return
+    end
 end
 
 try
@@ -120,13 +156,13 @@ try
         clu_ind     = clus_ids == this_id;
         this_ts     = ts_fsm_s(clu_ind);
         nSpikes     = sum(clus_ids == this_id);
-        w.mn        = wv_mn(cc,:,:);
-        w.std       = wv_std(cc,:,:);
+        w.mn        = squeeze(wv_mn(cc,:,:));
+        w.std       = squeeze(wv_std(cc,:,:));
         cluster     = cc;
         
         % insert cluster in cells table and collect resulting cellid key
         sqlstr      = ['insert into bdata.cells (ratname, sessid, channelid,' ...
-            'sc_num, cluster, nSpikes, filename, cluster_in_file, eibid)' ...
+            'sc_num, cluster, nSpikes, filename, cluster_in_file, eibid) ' ...
             'values ("{S}","{Si}","{Si}","{Si}","{Si}","{Si}","{S}","{Si}","{Si}")'];
         bdata(sqlstr,ratname,sessid, channelid, sc_num, cluster, nSpikes, rec_fname, this_id, eibid);
         cellid = bdata('select last_insert_id()');
