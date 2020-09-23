@@ -1,21 +1,29 @@
-function res = find_wireless_sess(sess, ratlist, behav_dir, mda_dir,fs)  
+function res = find_wireless_sess(sess, varargin)
 % function res = find_ttl_match(sess, ratlist, behav_dir, mda_dir)  
 % given a set of ttls and a date, search through a list of rats to find the best physiology session to match these ttls
+p = inputParser()
+addParameter(p,'overwrite',0)
+addParameter(p,'ratlist',{'H191','H176'})
+addParameter(p,'expmtr','Ahmed')
+addParameter(p,'behav_dir','')
+addParameter(p,'mda_dir','')
+addParameter(p,'fs',30000)
+parse(p,varargin{:})
 
 brody_dir = 'Y:';
-overwrite   = 1; 
-if nargin < 2 | isempty(ratlist)
-    ratlist     = {'H191','H176'};
+overwrite   = p.Results.overwrite;
+ratlist     = p.Results.ratlist;
+expmtr      = p.Results.expmtr;
+behav_dir   = p.Results.behav_dir;
+mda_dir     = p.Results.mda_dir;
+fs          = p.Results.fs;
+
+if isempty(behav_dir)
+    behav_dir = fullfile(brody_dir, 'RATTER/SoloData/Data', expmtr);
 end
-if nargin < 3 | isempty(behav_dir)
-    behav_dir   = fullfile(brody_dir,'RATTER/SoloData/Data/Ahmed/');
-end
-if nargin < 4 | isempty(mda_dir)
+if  isempty(mda_dir)
     phys_dir    = fullfile(brody_dir, 'RATTER/PhysData/Raw/Ahmed/SpikeGadgets/');
     mda_dir     = [phys_dir sess '.mda/'];
-end
-if nargin < 5 | isempty(fs)
-    fs          = 30000;
 end
 
 save_path   = fullfile(mda_dir, 'ttl_match.mat')
@@ -43,12 +51,15 @@ if strcmp(sess(1:4),'data')
     ratname = '';
     date_str = sess(12:17);
     fprintf('no ratname, will look for best match on date %s',date_str)
+    
 else
     ratname = sess(1:4);
     ratlist = {ratname};
     date_str = sess([14 15 6 7 9 10]);
     fprintf('ratname %s, date %s',ratname,date_str)
 end
+sessiondate = ['20' date_str([1 2]) '-' date_str([3 4]) ...
+    '-' date_str([5 6])];
 
 % load ttls from wireless 
 dio     = readTrodesExtractedDataFile(dio_file);
@@ -156,7 +167,13 @@ else
     res.goodpath    = behav_path{match_ind};
     res.behfile     = filename{match_ind};
     res.ratname     = rats{match_ind};
+    if bdata('connect') > 0
+        sessid          =  bdata(['select sessid from sessions where data_file="'  res.behfile(1:end-4) '"']);
+        res.sessid      = sessid;
+    else
+    res.sessiondate = sessiondate;
 end
+
     res.date_str    = date_str;
-    res.save_path = save_path;
+    res.save_path   = save_path;
     save(save_path, 'res', 'sess')
