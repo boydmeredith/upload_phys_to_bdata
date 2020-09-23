@@ -1,4 +1,4 @@
-function res = get_ksphy_results(sess_name)
+function res = get_ksphy_results(varargin)
 % function get_ksphy_waveforms(sess_name)
 % For each bundle
     % 1. use sp = loadKSdir to get the spike times and cluster ids of all mua and good clusters
@@ -19,30 +19,48 @@ function res = get_ksphy_results(sess_name)
 % get the syncing parameters
 % sync timestamps of timing variable
 
-if nargin  < 1
-    sess_name   = 'data_sdc_20190905_170428_fromSD';
-end
+p = inputParser();
+addParameter(p, 'mda_dir', []); % directory with mda files used to create binaries
+addParameter(p, 'bin_dir', []); % parent directory w/ folders containing each bundle binary + kilosort output
+addParameter(p, 'overwrite', false); % whether to reload or overwrite results
+addParameter(p, 'curator_name', 'Tyler'); % name of person curating data
+parse(p,varargin{:});
 
-if ~ispc 
+mda_dir     = p.Results.mda_dir;
+bin_dir     = p.Results.bin_dir;
+curator     = p.Results.curator_name;
+overwrite   = p.Results.overwrite;
+
+if ~ispc
     brody_dir   = '/Volumes/brody';
 else
     brody_dir   = 'Y:\';
 end
-
-if ~exist(brody_dir),
-    error(sprintf('can''t find brody directory: %s',brody_dir));
-end
-overwrite   = 1;
-expmtr      = 'Tyler';
-ratname     = 'H191';
 phys_dir    = fullfile(brody_dir,'/RATTER/PhysData');
-raw_dir     = fullfile(phys_dir, 'Raw');
-sorted_dir  = fullfile(phys_dir, 'Sorted');
-sess_dir    = fullfile(sorted_dir, 'Ahmed/SpikeGadgets/', ratname, sess_name);
-mda_dir     = fullfile(raw_dir, 'Ahmed/SpikeGadgets/', [sess_name '.mda']);
-bndl_dirfun = @(bb) fullfile(sess_dir,sprintf('%s_bundle%i',sess_name,bb));
+
+if ~exist(brody_dir)
+    warning(sprintf('can''t find brody directory: %s',brody_dir));
+end
+
+if isempty(bin_dir)
+    sess_name   = 'data_sdc_20190905_170428_fromSD';
+
+    ratname     = 'H191';
+    sorted_dir  = fullfile(phys_dir, 'Sorted');
+    bin_dir     = fullfile(sorted_dir, 'Ahmed/SpikeGadgets/', ratname, sess_name);
+end
+[~, sess_name] = fileparts(bin_dir);
+
+if isempty(mda_dir)
+    raw_dir     = fullfile(phys_dir, 'Raw');
+    mda_dir     = fullfile(raw_dir, 'Ahmed/SpikeGadgets/', [sess_name '.mda']);
+end
+
+
+
+bndl_dirfun = @(bb) fullfile(bin_dir,sprintf('%s_bundle%i',sess_name,bb));
 mda_filefun = @(tt) fullfile(mda_dir,sprintf('%s.nt%i.mda',sess_name,tt) );
-save_name   = fullfile(sess_dir,'waves.mat');
+save_name   = fullfile(bin_dir,'ksphy_clusters.mat');
 
 if exist(save_name,'file') && ~overwrite
     load(save_name,'res');
@@ -55,19 +73,25 @@ warning('uv per bit conversion ratio unknown')
 nchperb     = 32;
 nbundles    = 4;
 wave_x      = -6:25;
-nwaves      = 2000;
+nwaves      = 10000;
 ch2tt       = @(ch, bb) ceil(ch / 4) + (bb-1)*nchperb/4;
 % Loop over bundles to get cluster information and figure out which
 % tetrodes we need to load to get cluster waveforms
 %S(nbundles) = struct();
 
-sess_match = find_wireless_sess(sess_name);
+sess_match  = find_wireless_sess(sess_name,'overwrite',overwrite);
 
-notes_path  = fullfile(sess_dir,'cluster_notes.txt')
+
+notes_path  = fullfile(bin_dir,'cluster_notes.txt');
 notes_fid   = fopen(notes_path,'w+');
-sess_date   = datestr(['20' sess_match.date_str([1 2]) '-' sess_match.date_str([3 4]) ...
-    '-' sess_match.date_str([5 6])]);
-fprintf(notes_fid,'%s\n%s\n%s\n\n',sess_date, ratname, expmtr);
+ratname     = sess_match.ratname;
+sessiondate = datestr(['20' sess_match.date_str([1 2]) '-' sess_match.date_str([3 4]) ...
+    '-' sess_match.date_str([5 6])],29);
+
+
+
+fprintf(notes_fid,'%s\n%s\n%s\n\n',sessiondate, ratname, curator);
+
 
 
 for bb = 1:nbundles;
@@ -79,6 +103,16 @@ for bb = 1:nbundles;
     sp.single   = sp.cgs == 2;
 
     % Find which tetrode each cluster is on using cluster info file
+    if ~exist(cinf_path,'file')
+        prompt = sprintf(['could not find cluster info file for bundle %i. '...
+            'Do you want to continue? (y/n)'],bb);
+        in = input(prompt, 's');
+        if lower(in) == 'y'
+            continue
+        else
+            return
+        end
+    end
     fid = fopen(cinf_path);
     C   = textscan(fid, '%s%s%s%s%s%s%s%s%s%s%s%s');
     assert(strcmp(C{1}(1), 'id')); % these ids match the phy gui
@@ -119,6 +153,10 @@ res(nactivetts) = struct();
 
 tt_ix = 0;
 for bb = 1:nbundles
+    if isempty(S(bb))
+        warning(fprintf('skipping bundle %i', bb));
+        continue; 
+    end
     active_tts = unique(S(bb).tt1);
     fs = S(bb).sample_rate;
     % loop over trodes in this bundle with clusters
@@ -208,12 +246,12 @@ for bb = 1:nbundles
         res(tt_ix).sync_fit_m   = sess_match.spk2fsm_rt(1);
         res(tt_ix).sync_fit_b   = sess_match.spk2fsm_rt(2);
         res(tt_ix).event_ts_fsm = sess_match.spk2fsm_fn(ev_st);
-        res(tt_ix).clusnotepath = notes_path;
+        res(tt_ix).clusnotespath = notes_path;
 
     end
 end
 
 fclose(notes_fid);
 
-save(save_name,'waveS');
+save(save_name,'spkS');
 
