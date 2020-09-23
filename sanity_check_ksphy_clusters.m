@@ -10,9 +10,32 @@ phys_dir    = fullfile(brody_dir,'/RATTER/PhysData');
 raw_dir     = fullfile(phys_dir, 'Raw');
 sorted_dir  = fullfile(phys_dir, 'Sorted');
 sess_dir    = fullfile(sorted_dir, 'Ahmed/SpikeGadgets/', ratname, sess_name);
-waves_path  = fullfile(sess_dir,'waves.mat');
-load(waves_path,'waveS');
+
 %%
+waves_path  = fullfile(sess_dir,'waves.mat');
+load(waves_path, 'waveS')
+
+for ww = 1:length(waveS)
+    
+waveS(ww).event_wave = permute(waveS(ww).event_wave, [1 4 3 2]);
+waveS(ww).waves_mn = permute(waveS(ww).wv_mn, [1 3 2]);
+waveS(ww).waves_std = permute(waveS(ww).wv_std, [1 3 2]);
+
+end
+
+waves_path  = fullfile(sess_dir,'ksphy_clusters.mat');
+
+res = waveS;
+save(waves_path,'res')
+%%
+waves_dir = 'D:\Ahmed\data_sdc_20190905_170428_fromSD.mda';
+%waves_dir = sess_dir;
+waves_path = fullfile(waves_dir,'ksphy_clusters.mat');
+
+load(waves_path,'res');
+
+waveS = res;
+
 trodenums   = [waveS.trodenum];
 for ttind = 1:length(trodenums)
     unique_clu = unique(waveS(ttind).event_clus);
@@ -31,9 +54,10 @@ for ttind = 1:length(trodenums)
         lh = cellfun(@(x) ~isempty(x.left_reward), {peh.states});
         
         this_waves = squeeze(waveS(ttind).event_wave(cc,:,:,:));
-        mean_waves = nanmean(waveS(ttind).wa,4);
         
-        pks        = max(this_waves,[],3);
+        mean_waves = nanmean(this_waves,3)';
+        
+        pks        = squeeze(max(this_waves,[],2))';
         
         lh_cpk_ts = cpk_ts(rh);
         rh_cpk_ts = cpk_ts(lh);
@@ -48,14 +72,14 @@ for ttind = 1:length(trodenums)
         label = sprintf('trode %i cluster %i phy id %i',trodenums(ttind),cc,phy_ind);
         
         figure(1); clf
-        set(figure(1),'position',[ 400   525   300   300])
+        %set(figure(1),'position',[ 400   525   300   300])
         plot(x,nanmean(ylh),'r')
         hold on
         plot(x,nanmean(yrh),'b')
         title({'choice psth' label })
         
         hf = figure(2); clf
-        set(hf,'position',[ 10   525   363   528])
+        %set(hf,'position',[ 10   525   363   528])
         subplot(321)
         plot(pks(:,1),pks(:,2),'.')
         xlabel('ch 1')
@@ -86,7 +110,7 @@ for ttind = 1:length(trodenums)
         % look at average wave form
         figure(3); clf
         
-        set(figure(3),'position',[ 400   75   200   400])
+        %set(figure(3),'position',[ 400   75   200   400])
         
         subplot(212)
         plot(-mean_waves(:,1),'color',[.8 .0 .0],'linewidth',2)
@@ -105,7 +129,7 @@ for ttind = 1:length(trodenums)
                 title({'mean waveform' label })
 
         figure(4); clf
-        set(figure(4),'position',[ 10   175   300   300])
+       % set(figure(4),'position',[ 10   175   300   300])
         dt = .5;
         histogram((diff(ts_fsm)*1e3),0:dt:1000)
         title({'ISI' label})
