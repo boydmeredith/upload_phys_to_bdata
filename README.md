@@ -29,12 +29,16 @@ In order to use this code, you need to create a `spkS` structure and then call
 -   `waves_clus`      nclusts x 1     matches waves_mn to event_clus and to cluster
                                     notes
 ## How do I get a `spkS` structure
-You can make `spkS` based on any kind of data! And, if you want to do it for a spike gadgets
-recording with cluster cutting performed in kilosort and curated in phy, we can even help. 
-There's also a version for neuralynx recordings and mountainsort spike sorting, but you have to ask 
-Tyler about it.
+If you sorted your data using any of the following pipelines, it should be pretty easy. 
+Otherwise, you'll have to write your own function to create the structure.
 
 ### SpikeGadgets -> Kilosort2 -> Phy
 To get a `spkS` struct for this pipeline, run 
 `spkS = get_ksphy_results('bin_dir',<path/to/your/binary_parent_directory>)`. 
 At the moment, you will have to do some work to sort the paths out, but that should be fixed soon.
+
+### Neuralynx -> Mountainsort
+This is basically done, but not in this repository yet. Ask Tyler if you want this code.
+
+### SpikeGadgets -> Mountainsort
+You should be able to make something based on the code in the the two pipelines above.
